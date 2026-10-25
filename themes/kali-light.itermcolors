@@ -233,5 +233,7 @@
 		<key>Red Component</key>
 		<real>0.8666666666666667</real>
 	</dict>
+	<key>Use Bright Bold</key>
+	<false/>
 </dict>
 </plist>

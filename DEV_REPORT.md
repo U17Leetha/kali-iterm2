@@ -81,3 +81,22 @@ Items 1 (with the caveat below), 3 and 4 were confirmed by the user in real term
 **Visual validation status:** escape-sequence and palette-level verification complete (`gls --color=always` emits `di=01;34`, profile maps ANSI 4→`#006BD6`, ANSI 12→`#0059B3`). **Rendered-pixel confirmation in iTerm2 of the corrected color has NOT been performed** — this environment cannot view images, and scripted screenshotting of the user's iTerm2 was blocked (Apple events timing out). A rendered before/after swatch exists at `/tmp/kali-light-swatch.png` for the user; final sign-off requires one `gls --color=always -la` glance in a new Kali Light tab.
 
 **Provenance:** palette value change only; no third-party code introduced; LICENSE and NOTICE unchanged.
+
+## 8. Addendum — visual fidelity pass (Kali Light)
+
+**Symptom after §7:** directories still read pale lavender/periwinkle in the user's rendered iTerm2, and the prompt reads uniformly blue where real Kali shows cyan structure + blue identity + dark path.
+
+**Root causes:**
+1. Directory hue depended on *which* blue survived iTerm2's bold handling. Any inherited "Use Bright Bold" state (user preset, older profile copy, or a session that loaded before §7 regenerated the JSON) routes `di=01;34` through ANSI 12 — a different blue than Kali's azure ANSI 4. The palette-only fix was correct but fragile: fidelity hinged on one setting we did not control per-profile.
+2. The prompt used a single accent (`#006BD6`) for structure *and* identity; real Kali separates them (aqua frame, blue user/host, dark bold path).
+
+**Corrections (light theme only; smallest changes):**
+- `themes/kali-light.itermcolors`: added profile-level `Use Bright Bold = false`. Bold now renders with normal palette entries → directories are azure `#006BD6` at bold weight regardless of inherited settings; archives/executables shift to their slightly *darker* normal reds/greens (contrast improves); dark profile untouched (keeps iTerm2 default, Zed unaffected).
+- `prompt/kali.zsh`: new light-theme frame color `#009BC9` (cyan/aqua) for `┌──`, brackets, `└─`; identity stays `#006BD6`, path stays `#1D2430`. Dark branch sets frame = accent so dark output is byte-identical to before.
+- README: optional `~/.hushlogin` tip (documented only) for the non-Kali `Last login:` line.
+
+**Live state:** dynamic profile JSON regenerated — Kali Light now carries `Use Bright Bold: false`; requires a **new tab** (and, once, Settings → Profiles → Set Default if not yet done) to take visual effect.
+
+**Testing:** suite extended to **37 checks, all passing**: bold-bold pinning per theme, three-tone light prompt assertion, dark prompt byte-unchanged assertion; previous contrast-floor and Zed palette pins still pass. Restoration/install safety untouched (isolated HOMEs only).
+
+**Gap:** rendered-pixel confirmation remains user-side (no image capability in this environment). Validation is one new Kali Light tab: `gls --color=always -la` in `/tmp/kali-iterm2-visual-test` — expect azure bold dirs, red archives, green executables, teal symlinks, aqua prompt frame.

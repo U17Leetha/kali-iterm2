@@ -14,14 +14,28 @@ All notable changes to Kali-iTerm2 are documented here. The format follows
   installed default, `LS_COLORS` follows session theme, invalid value falls
   back safely to light).
 - A regression test locking Kali Light's bold-bright directory blue to a
-  readable contrast floor and pinning Kali Dark's bright blue against change
-  (suite: 35 checks).
+  readable contrast floor and pinning Kali Dark's bright blue against change.
+- Optional `~/.hushlogin` tip in the README to hide macOS's non-Kali
+  `Last login:` line (documented only; never automated by the installer).
+- Regression tests: Kali Light pins "Use Bright Bold" off while Kali Dark
+  keeps the iTerm2 default, and the light prompt must carry all three tones
+  (cyan structure / blue identity / dark path) while the dark prompt stays
+  byte-identical (suite: 37 checks).
 
 ### Changed
 
 - The managed `.zshrc` block now writes
   `export KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-<mode>}"` instead of an
   unconditional assignment, so explicit per-session requests are respected.
+- **Kali Light profile disables iTerm2's "Use Bright Bold" explicitly.**
+  Bold text renders with the normal palette entries, so directories
+  (`di=01;34`) display the saturated azure ANSI blue `#006BD6` at bold
+  weight — matching Kali — instead of any bright variant, immune to
+  inherited user settings. Kali Dark keeps iTerm2's default behavior.
+- **Kali Light prompt structure is now cyan/aqua (`#009BC9`)** for `┌──`,
+  brackets and `└─`, while username/host stay strong blue (`#006BD6`) and
+  the path stays dark bold — Kali's three-tone prompt instead of one
+  uniform blue. Dark theme prompt colors are unchanged.
 
 ### Fixed
 
@@ -29,10 +43,12 @@ All notable changes to Kali-iTerm2 are documented here. The format follows
   bold text with the *bright* palette entry ("Use Bright Bold", on by default),
   so `di=01;34` displayed bright blue (ANSI 12, `#0080FF`, contrast 3.6:1 on
   the light background) instead of the saturated Kali blue. The Kali Light
-  theme's bright blue is now `#0059B3` (contrast 6.5:1, WCAG AA); regular
-  ANSI blue and every other palette entry are unchanged, and the Kali Dark
-  palette is untouched. A regression test locks the contrast floor and pins
-  the dark palette's bright blue.
+  theme's bright blue is now `#0059B3` (contrast 6.5:1, WCAG AA), and the
+  profile-level "Use Bright Bold" fix above makes directories render the
+  azure ANSI 4 blue outright. ANSI blue and every other palette entry are
+  unchanged, and the Kali Dark palette is untouched. Regression tests lock
+  the contrast floor, the bold-bold setting, and the dark palette's bright
+  blue.
 
 ## [0.3.0] - 2026-10-25
 

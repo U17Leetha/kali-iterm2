@@ -53,6 +53,10 @@ def cr(a, b):
 light = plistlib.loads((root/'themes/kali-light.itermcolors').read_bytes())
 dark  = plistlib.loads((root/'themes/kali-dark.itermcolors').read_bytes())
 assert cr(light['Ansi 12 Color'], light['Background Color']) >= 4.5, 'light bright-blue unreadable on light bg'
+# Kali Light must render bold via normal-weight palette (dirs = ANSI 4 azure),
+# immune to "Use Bright Bold"; the dark profile keeps iTerm2's default.
+assert light.get('Use Bright Bold') is False, 'kali-light must disable Use Bright Bold'
+assert 'Use Bright Bold' not in dark, 'kali-dark must keep the iTerm2 default'
 def hx(c): return '#%02X%02X%02X' % tuple(round(c[k]*255) for k in ('Red Component','Green Component','Blue Component'))
 assert hx(dark['Ansi 12 Color']) == '#8BC8FF', 'dark palette changed unexpectedly'
 PYEOF
@@ -184,6 +188,15 @@ if [[ $RC == 0 && "$OUT" == *"┌──("*"㉿"* && "$OUT" == *"└─"* ]]; the
 else bad "prompt render (rc=$RC)" "$OUT"; fi
 OUT=$(HOME="$H" KALI_ITERM2_THEME=dark zsh -f -i -c "source '$ROOT/prompt/kali.zsh'; print -P -- \$PROMPT" 2>&1); RC=$?
 [[ $RC == 0 && "$OUT" == *"┌──("* ]] && ok "prompt renders in dark theme" || bad "dark prompt render"
+# Kali Light: cyan/aqua structure vs blue identity split; dark palette untouched.
+OUT=$(HOME="$H" zsh -f -i -c "source '$ROOT/prompt/kali.zsh'; print -r -- \$PROMPT" 2>&1)
+if [[ "$OUT" == *'#009BC9'* && "$OUT" == *'#006BD6'* && "$OUT" == *'#1D2430'* ]]; then
+  ok "light prompt splits cyan structure, blue identity, dark path"
+else bad "light prompt color split" "$OUT"; fi
+OUT=$(HOME="$H" KALI_ITERM2_THEME=dark zsh -f -i -c "source '$ROOT/prompt/kali.zsh'; print -r -- \$PROMPT" 2>&1)
+if [[ "$OUT" == *'#69B5FF'* && "$OUT" != *'#009BC9'* ]]; then
+  ok "dark prompt colors unchanged (Zed-safe)"
+else bad "dark prompt altered" "$OUT"; fi
 # non-interactive shells must be untouched
 OUT=$(HOME="$H" zsh -f -c "P=orig; source '$ROOT/prompt/kali.zsh'; print \$PROMPT" 2>&1)
 [[ "$OUT" != *"┌──"* ]] && ok "non-interactive shell prompt untouched" || bad "interactive guard"

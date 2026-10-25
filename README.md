@@ -3,7 +3,7 @@
 A tiny, independently written appearance-only package for **iTerm2 on macOS**. It does not install Kali, alter OpenCode, or copy Kali's published `.zshrc` source. Unaffiliated with [Kali Linux](https://www.kali.org/) / Offensive Security.
 
 ## Included
-- Kali-inspired two-line Zsh prompt (`┌──(user㉿host)-[path]` / `└─$`)
+- Kali-inspired two-line Zsh prompt (`┌──(user㉿host)-[path]` / `└─$`) with cyan/aqua structure and blue username/host on the light theme
 - Two iTerm2 Dynamic Profiles: **Kali Light** and **Kali Dark**
 - GNU `ls` colors: blue directories, red archives, green executables; BSD `ls` fallback
 - Reversible installer
@@ -26,6 +26,8 @@ From the extracted folder, run the interactive installer:
 Choose **Kali Light** or **Kali Dark**, review the changes, and confirm. For automation, run `./install.sh light` or `./install.sh dark` (non-interactive; skips the menu and confirmation).
 
 Then in **iTerm2 → Settings → Profiles**, choose **Kali Light** or **Kali Dark** and use **Other Actions → Set as Default**. Open a new terminal tab. Existing profiles are not overwritten.
+
+Optional: macOS prints `Last login: …` at the start of every session, which real Kali doesn't have. Run `touch ~/.hushlogin` to silence it (purely cosmetic; the installer deliberately does not do this for you).
 
 To switch light/dark later, rerun `./install.sh dark` or `./install.sh light` and select the matching iTerm2 profile.
 
