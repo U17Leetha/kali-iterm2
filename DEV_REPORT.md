@@ -63,3 +63,21 @@ Not verified (no claim made either way):
 3. Confirm Kali Light/Dark appear in iTerm2 → Settings → Profiles after install (Dynamic Profile loading).
 4. Apply the README Zed snippet; open a new Zed terminal: dark prompt colors while iTerm2 stays light; remove snippet restores inherited default.
 5. Confirm OpenCode's own theme is unaffected in both terminals.
+
+Items 1 (with the caveat below), 3 and 4 were confirmed by the user in real terminals; item 2/5 remain user-side.
+
+## 7. Addendum — Kali Light directory color fix (release validation round)
+
+**Symptom:** directories listed pale lavender in iTerm2 Kali Light; correct saturated blue in Zed dark.
+
+**Root cause:** `LS_COLORS` colors directories with bold + ANSI blue (`di=01;34`). iTerm2's "Use Bright Bold" (on by default, not overridden by our profiles) renders bold text with the *bright* palette entry, so directories actually displayed Kali Light's bright blue (ANSI 12 = `#0080FF`, contrast only 3.6:1 on `#F8F9FA`) — a thin, washed-out lavender-adjacent blue at small sizes. Zed was never affected because it renders ANSI indexes through its own editor-theme palette. Verified against the live environment: managed `.zshrc` block intact and last among `LS_COLORS` setters; fresh shells receive our ANSI values (the user's older manual truecolor blocks in `.zshrc` are overridden); dynamic profile JSON matched the theme plist exactly — ruling out settings overrides, stale profiles, and shell-config conflicts.
+
+**Correction (smallest change):** Kali Light `Ansi 12 Color` `#0080FF` → `#0059B3` in `themes/kali-light.itermcolors` only — contrast 6.5:1 (WCAG AA). No code changes: prompt, `ls-colors.zsh`, installer and profile generator untouched; Kali Dark palette explicitly unchanged (protected by test). Live dynamic profile JSON regenerated via `make_profiles.py`.
+
+**Contrast audit on light background (unchanged entries):** archives 4.45:1, executables 4.12:1, symlinks 4.18:1, default text 14.8:1 — all ≥ 3:1 non-text floor; only the bold-bright directory blue was below par.
+
+**Testing:** suite extended to **35 checks (all passing)**; new regression test asserts Kali Light bright-blue contrast ≥ 4.5:1 against its background and pins Kali Dark's bright blue at `#8BC8FF`. Restoration scenarios re-verified in isolated HOMEs only (single block on reinstall, OMZ/Starship preserved, post-install edits survive uninstall, backup kept, no-op repeat uninstall, 3× cycles).
+
+**Visual validation status:** escape-sequence and palette-level verification complete (`gls --color=always` emits `di=01;34`, profile maps ANSI 4→`#006BD6`, ANSI 12→`#0059B3`). **Rendered-pixel confirmation in iTerm2 of the corrected color has NOT been performed** — this environment cannot view images, and scripted screenshotting of the user's iTerm2 was blocked (Apple events timing out). A rendered before/after swatch exists at `/tmp/kali-light-swatch.png` for the user; final sign-off requires one `gls --color=always -la` glance in a new Kali Light tab.
+
+**Provenance:** palette value change only; no third-party code introduced; LICENSE and NOTICE unchanged.

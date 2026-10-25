@@ -13,12 +13,26 @@ All notable changes to Kali-iTerm2 are documented here. The format follows
 - Four regression tests for the override path (override wins, fallback to
   installed default, `LS_COLORS` follows session theme, invalid value falls
   back safely to light).
+- A regression test locking Kali Light's bold-bright directory blue to a
+  readable contrast floor and pinning Kali Dark's bright blue against change
+  (suite: 35 checks).
 
 ### Changed
 
 - The managed `.zshrc` block now writes
   `export KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-<mode>}"` instead of an
   unconditional assignment, so explicit per-session requests are respected.
+
+### Fixed
+
+- **Kali Light directories rendered pale lavender in iTerm2.** iTerm2 renders
+  bold text with the *bright* palette entry ("Use Bright Bold", on by default),
+  so `di=01;34` displayed bright blue (ANSI 12, `#0080FF`, contrast 3.6:1 on
+  the light background) instead of the saturated Kali blue. The Kali Light
+  theme's bright blue is now `#0059B3` (contrast 6.5:1, WCAG AA); regular
+  ANSI blue and every other palette entry are unchanged, and the Kali Dark
+  palette is untouched. A regression test locks the contrast floor and pins
+  the dark palette's bright blue.
 
 ## [0.3.0] - 2026-10-25
 

@@ -37,6 +37,25 @@ for m in light dark; do
   plutil -lint "$ROOT/themes/kali-$m.itermcolors" >/dev/null 2>&1 \
     && ok "kali-$m.itermcolors is a valid plist" || bad "kali-$m.itermcolors plist"
 done
+# Regression: bold-bright dirs (di=01;34 -> ANSI 12 via iTerm2 "Use Bright Bold")
+# must stay readable on the light background, and the dark palette stays put.
+python3 - "$ROOT" <<'PYEOF' && ok "light Ansi 12 readable + dark palette unchanged" || bad "palette regression"
+import plistlib, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+def lum(c):
+    v = [c[k] for k in ('Red Component','Green Component','Blue Component')]
+    v = [x/12.92 if x <= 0.03928 else ((x+0.055)/1.055)**2.4 for x in v]
+    return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]
+def cr(a, b):
+    l1, l2 = sorted((lum(a), lum(b)), reverse=True)
+    return (l1+0.05)/(l2+0.05)
+light = plistlib.loads((root/'themes/kali-light.itermcolors').read_bytes())
+dark  = plistlib.loads((root/'themes/kali-dark.itermcolors').read_bytes())
+assert cr(light['Ansi 12 Color'], light['Background Color']) >= 4.5, 'light bright-blue unreadable on light bg'
+def hx(c): return '#%02X%02X%02X' % tuple(round(c[k]*255) for k in ('Red Component','Green Component','Blue Component'))
+assert hx(dark['Ansi 12 Color']) == '#8BC8FF', 'dark palette changed unexpectedly'
+PYEOF
 
 # ------------------------------------------------------- profile generation --
 echo "== iTerm2 profile generation =="
