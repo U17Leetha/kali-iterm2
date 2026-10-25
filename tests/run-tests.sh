@@ -60,8 +60,8 @@ else bad "clean install light" "$(tail -3 /tmp/kali-t-install.log)"; fi
 
 # 2. Clean install, dark
 H=$(new_home s2); run_install "$H" dark
-grep -q 'export KALI_ITERM2_THEME=dark' "$H/.zshrc" 2>/dev/null \
-  && ok "clean install (dark) sets theme=dark" || bad "clean install dark"
+grep -qF 'KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-dark}"' "$H/.zshrc" 2>/dev/null \
+  && ok "clean install (dark) sets default theme=dark" || bad "clean install dark"
 
 # 3. Reinstall same theme -> still exactly one block
 run_install "$H" dark
@@ -70,10 +70,10 @@ run_install "$H" dark
 
 # 4/5. Switch dark -> light -> dark
 run_install "$H" light
-grep -q 'export KALI_ITERM2_THEME=light' "$H/.zshrc" && [[ $(block_count "$H") == 1 ]] \
+grep -qF 'KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-light}"' "$H/.zshrc" && [[ $(block_count "$H") == 1 ]] \
   && ok "switch dark to light (single block, theme updated)" || bad "switch dark->light"
 run_install "$H" dark
-grep -q 'export KALI_ITERM2_THEME=dark' "$H/.zshrc" && [[ $(block_count "$H") == 1 ]] \
+grep -qF 'KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-dark}"' "$H/.zshrc" && [[ $(block_count "$H") == 1 ]] \
   && ok "switch light to dark (single block, theme updated)" || bad "switch light->dark"
 
 # 6. Existing Oh My Zsh configuration preserved
@@ -169,6 +169,22 @@ OUT=$(HOME="$H" KALI_ITERM2_THEME=dark zsh -f -i -c "source '$ROOT/prompt/kali.z
 OUT=$(HOME="$H" zsh -f -c "P=orig; source '$ROOT/prompt/kali.zsh'; print \$PROMPT" 2>&1)
 [[ "$OUT" != *"┌──"* ]] && ok "non-interactive shell prompt untouched" || bad "interactive guard"
 
+# -------------------------------------------- per-session theme override ----
+echo "== per-session theme override (Zed-style terminal env) =="
+H=$(new_home override); run_install "$H" light   # installed default: light
+OUT=$(HOME="$H" KALI_ITERM2_THEME=dark zsh -f -c 'source "$HOME/.zshrc"; print -r -- $KALI_ITERM2_THEME' 2>&1)
+[[ "$OUT" == dark ]] && ok "session env KALI_ITERM2_THEME=dark wins over installed light default" \
+  || bad "session override ignored" "$OUT"
+OUT=$(HOME="$H" zsh -f -c 'source "$HOME/.zshrc"; print -r -- $KALI_ITERM2_THEME' 2>&1)
+[[ "$OUT" == light ]] && ok "unset session env falls back to installed default (light)" \
+  || bad "fallback to installed default" "$OUT"
+OUT=$(HOME="$H" KALI_ITERM2_THEME=dark zsh -f -c 'source "$HOME/.zshrc"; print -r -- $LS_COLORS' 2>&1)
+[[ "$OUT" == *'ln=01;36'* ]] && ok "ls colors follow the session theme (dark variant)" \
+  || bad "ls colors ignored session theme" "$OUT"
+OUT=$(HOME="$H" KALI_ITERM2_THEME=bogus zsh -f -i -c "source '$ROOT/prompt/kali.zsh'; print -r -- \$PROMPT" 2>&1)
+[[ "$OUT" == *'#006BD6'* ]] && ok "invalid session value safely falls back to light palette" \
+  || bad "invalid-value fallback" "$OUT"
+
 # --------------------------------------------------------- interactive UI ---
 echo "== interactive installer (pty) =="
 if command -v expect >/dev/null 2>&1; then
@@ -186,7 +202,7 @@ catch wait result
 exit [lindex \$result 3]
 EOF
   expect "$EXP" >/tmp/kali-t-pty.log 2>&1
-  if [[ $? == 0 && $(block_count "$H") == 1 ]] && grep -q 'KALI_ITERM2_THEME=light' "$H/.zshrc"; then
+  if [[ $? == 0 && $(block_count "$H") == 1 ]] && grep -qF 'KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-light}"' "$H/.zshrc"; then
     ok "interactive menu (pty): pick 1 + confirm installs light"
   else
     bad "interactive pty run" "see /tmp/kali-t-pty.log"

@@ -29,6 +29,16 @@ Then in **iTerm2 → Settings → Profiles**, choose **Kali Light** or **Kali Da
 
 To switch light/dark later, rerun `./install.sh dark` or `./install.sh light` and select the matching iTerm2 profile.
 
+### Per-terminal theme (e.g. Zed)
+
+The installed theme is only the **default**. Any terminal can request the other palette for its own shell sessions by setting `KALI_ITERM2_THEME` (`light` or `dark`) in the child environment; nothing else changes and no other terminal is affected. Zed's integrated terminal, for example, uses its dark editor theme — add to Zed's `settings.json`:
+
+```json
+"terminal": { "env": { "KALI_ITERM2_THEME": "dark" } }
+```
+
+iTerm2 keeps using the profile you installed (it does not set that variable), and this package never writes to Zed or iTerm2 settings. Automatic appearance detection is deliberately not attempted: neither terminal reliably exposes its active light/dark theme to shells, so the choice is explicit.
+
 ## Uninstall
 
 ```sh

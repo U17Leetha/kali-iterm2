@@ -48,3 +48,18 @@ Not verified (no claim made either way):
 
 - iTerm2 may drop unknown keys from dynamic-profile JSON on rewrite; harmless here but worth one manual smoke test before publishing the release tag.
 - Consider a GitHub Actions matrix (macos-latest, bash + zsh) once the repo is published.
+
+## 6. Addendum — v0.3 acceptance & Zed terminal compatibility (v0.3.1 work)
+
+**Root cause (Zed shows light-mode colors on its dark background):** the prompt uses fixed 24-bit hex colors chosen per palette (`%F{#006BD6}` etc.), not terminal-palette ANSI indexes, and the managed `.zshrc` block exported `KALI_ITERM2_THEME=<mode>` unconditionally — so every terminal running the user's zsh got the iTerm2-installed palette regardless of its own appearance. (Zed renders its terminal background from the editor theme; `ls` colors use ANSI indexes and adapt, which is why only the prompt looked wrong.)
+
+**Investigation evidence:** Zed source `crates/terminal/src/terminal.rs::insert_zed_terminal_env` unconditionally inserts `TERM_PROGRAM=zed`, `ZED_TERM=true`, `COLORTERM=truecolor`, `TERM=xterm-256color` (overwrite-on-inherit), and exposes **no** light/dark appearance variable; official docs confirm `terminal.env` injects arbitrary per-session env. iTerm2 sets `TERM_PROGRAM=Apple_Terminal`. `COLORFGBG` is not set by Zed and unreliable in iTerm2 — automatic detection rejected in favor of an explicit setting (README "Per-terminal theme").
+
+**Change:** one line in the managed block (`export KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-<mode>}"`) so a terminal-provided value wins per session; Zed config lives outside this package. No prompt/ls-colors/install/uninstall behavior changes. Suite extended to **34 checks (all passing)**: override precedence, default fallback, `LS_COLORS` follows session theme, invalid value falls back to light.
+
+**Remaining manual verification (GUI — cannot be automated here):**
+1. Install light; in iTerm2 set the Kali Light profile default; confirm prompt/ls colors visually.
+2. Same for dark.
+3. Confirm Kali Light/Dark appear in iTerm2 → Settings → Profiles after install (Dynamic Profile loading).
+4. Apply the README Zed snippet; open a new Zed terminal: dark prompt colors while iTerm2 stays light; remove snippet restores inherited default.
+5. Confirm OpenCode's own theme is unaffected in both terminals.

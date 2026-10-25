@@ -108,7 +108,7 @@ start = '# >>> kali-iterm2 managed >>>'
 end   = '# <<< kali-iterm2 managed <<<'
 s = re.sub(r'\n?' + re.escape(start) + r'.*?' + re.escape(end) + r'\n?', '\n', s, flags=re.S)
 block = (f'\n{start}\n'
-         f'export KALI_ITERM2_THEME={mode}\n'
+         f'export KALI_ITERM2_THEME="${{KALI_ITERM2_THEME:-{mode}}}"\n'
          f'source "$HOME/.config/kali-iterm2/colors/ls-colors.zsh"\n'
          f'source "$HOME/.config/kali-iterm2/prompt/kali.zsh"\n'
          f'{end}\n')

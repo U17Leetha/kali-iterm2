@@ -3,6 +3,23 @@
 All notable changes to Kali-iTerm2 are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Per-terminal theme selection: a session can set `KALI_ITERM2_THEME=light|dark`
+  in its environment (e.g. Zed's `terminal.env`) to override the installed
+  default for that terminal only; documented in the README with a Zed example.
+- Four regression tests for the override path (override wins, fallback to
+  installed default, `LS_COLORS` follows session theme, invalid value falls
+  back safely to light).
+
+### Changed
+
+- The managed `.zshrc` block now writes
+  `export KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-<mode>}"` instead of an
+  unconditional assignment, so explicit per-session requests are respected.
+
 ## [0.3.0] - 2026-10-25
 
 Publication-readiness release. Behavior of the v0.2 installer is preserved;
