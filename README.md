@@ -1,12 +1,19 @@
 # Kali-inspired iTerm2
 
-A tiny, independently written appearance-only package for **iTerm2 on macOS**. It does not install Kali, alter OpenCode, or copy Kali's published `.zshrc` source. Unaffiliated with Kali Linux / Offensive Security.
+A tiny, independently written appearance-only package for **iTerm2 on macOS**. It does not install Kali, alter OpenCode, or copy Kali's published `.zshrc` source. Unaffiliated with [Kali Linux](https://www.kali.org/) / Offensive Security.
 
 ## Included
 - Kali-inspired two-line Zsh prompt (`┌──(user㉿host)-[path]` / `└─$`)
 - Two iTerm2 Dynamic Profiles: **Kali Light** and **Kali Dark**
 - GNU `ls` colors: blue directories, red archives, green executables; BSD `ls` fallback
 - Reversible installer
+
+## Requirements
+
+- macOS with **zsh** (preinstalled) and **python3** (used to edit `.zshrc` safely and generate profiles).
+- Any recent Bash — including the stock macOS Bash 3.2 (`/bin/bash`). No sudo, no network access, no remote scripts: everything runs from this folder.
+- iTerm2 (the installer warns if it is not present; the shell-side pieces still install).
+- `gls` from `brew install coreutils` is optional but required for GNU-only color features (archive-extension colors); without it a BSD `ls -G` fallback is used.
 
 ## Install
 
@@ -16,9 +23,9 @@ From the extracted folder, run the interactive installer:
 ./install.sh
 ```
 
-Choose **Kali Light** or **Kali Dark**, review the changes, and confirm. For automation, you can still run `./install.sh light` or `./install.sh dark` (these also ask for confirmation when attached to a terminal).
+Choose **Kali Light** or **Kali Dark**, review the changes, and confirm. For automation, run `./install.sh light` or `./install.sh dark` (non-interactive; skips the menu and confirmation).
 
-Then in **iTerm2 → Settings → Profiles**, choose **Kali Light** or **Kali Dark** and use **Other Actions → Set as Default**. Open a new terminal tab. Existing profiles are not overwritten. `gls` from `brew install coreutils` is optional but required for archive-extension colors; otherwise macOS `/bin/ls` is used.
+Then in **iTerm2 → Settings → Profiles**, choose **Kali Light** or **Kali Dark** and use **Other Actions → Set as Default**. Open a new terminal tab. Existing profiles are not overwritten.
 
 To switch light/dark later, rerun `./install.sh dark` or `./install.sh light` and select the matching iTerm2 profile.
 
@@ -28,7 +35,15 @@ To switch light/dark later, rerun `./install.sh dark` or `./install.sh light` an
 ./uninstall.sh
 ```
 
-Reselect your previous default profile in iTerm2. The installer backs up `.zshrc` before modifications and only adds/removes a clearly marked block. It doesn't uninstall existing tools or fonts.
+Uninstall backs up `.zshrc` (to `~/.zshrc.kali-iterm2.uninstall.<timestamp>.bak`), removes only the clearly marked managed block, deletes the installed prompt/color files and the two dynamic profiles, and reports every action. It is a safe no-op if nothing was installed. Reselect your previous default profile in iTerm2. It doesn't uninstall existing tools or fonts.
+
+## Tests
+
+```sh
+tests/run-tests.sh
+```
+
+Runs the full suite inside isolated temporary `HOME` directories — it never touches your real shell configuration. Covers clean installs, theme switching, reinstall idempotency, Oh My Zsh / Starship coexistence, uninstall reversibility, interrupted installs, spaces in `$HOME`, GNU/BSD `ls` behavior, prompt rendering, argument validation, and an interactive pty run of the menu.
 
 ## Limitations
 
