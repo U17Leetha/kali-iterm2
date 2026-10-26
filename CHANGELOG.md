@@ -7,6 +7,20 @@ All notable changes to Kali-iTerm2 are documented here. The format follows
 
 ### Added
 
+- Optional Zed integration in the interactive installer: when Zed is detected,
+  a separate Light/Dark/Skip question applies
+  `terminal.env.KALI_ITERM2_THEME` to Zed's `settings.json` (independent of the
+  iTerm2 theme). The edit is surgical — comments, formatting and all unrelated
+  settings stay byte-identical; the file is backed up first; an existing
+  override is never replaced without confirmation; malformed or unsafe files
+  fall back to printing the manual snippet. `--zed light|dark` enables it for
+  automation (without the flag, non-interactive installs never touch Zed).
+  Uninstall removes only the added key, with a backup. New stdlib-only helper
+  `zed_settings.py`; no JSON dependency introduced.
+- Eleven tests for the Zed integration: undetected-skip, interactive skip,
+  light/dark selection, existing terminal config with JSONC comments, existing
+  override protection, malformed-file safety, idempotent reinstallation,
+  uninstall preservation and no-op behavior (suite: 48 checks).
 - Per-terminal theme selection: a session can set `KALI_ITERM2_THEME=light|dark`
   in its environment (e.g. Zed's `terminal.env`) to override the installed
   default for that terminal only; documented in the README with a Zed example.
@@ -20,7 +34,7 @@ All notable changes to Kali-iTerm2 are documented here. The format follows
 - Regression tests: Kali Light pins "Use Bright Bold" off while Kali Dark
   keeps the iTerm2 default, and the light prompt must carry all three tones
   (cyan structure / blue identity / dark path) while the dark prompt stays
-  byte-identical (suite: 37 checks).
+  byte-identical (part of the suite today).
 
 ### Changed
 

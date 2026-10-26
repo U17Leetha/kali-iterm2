@@ -39,7 +39,9 @@ The installed theme is only the **default**. Any terminal can request the other 
 "terminal": { "env": { "KALI_ITERM2_THEME": "dark" } }
 ```
 
-iTerm2 keeps using the profile you installed (it does not set that variable), and this package never writes to Zed or iTerm2 settings. Automatic appearance detection is deliberately not attempted: neither terminal reliably exposes its active light/dark theme to shells, so the choice is explicit.
+iTerm2 keeps using the profile you installed (it does not set that variable). Automatic appearance detection is deliberately not attempted: neither terminal reliably exposes its active light/dark theme to shells, so the choice is explicit.
+
+If Zed is detected, the interactive installer offers to apply that snippet for you — its own Light/Dark/Skip question, independent of the iTerm2 theme. It edits only this one key surgically (your comments, formatting and every other setting stay byte-identical), backs `settings.json` up first, never overwrites an existing override without asking, and falls back to showing the snippet above if your settings file cannot be edited safely. For automation: `./install.sh dark --zed light`. Without `--zed`, non-interactive installs never touch Zed. `./uninstall.sh` removes only the key this package added (with a backup) and leaves unrelated Zed edits alone.
 
 ## Uninstall
 

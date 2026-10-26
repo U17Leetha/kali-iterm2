@@ -217,6 +217,95 @@ OUT=$(HOME="$H" KALI_ITERM2_THEME=bogus zsh -f -i -c "source '$ROOT/prompt/kali.
 [[ "$OUT" == *'#006BD6'* ]] && ok "invalid session value safely falls back to light palette" \
   || bad "invalid-value fallback" "$OUT"
 
+# ------------------------------------------------------- zed integration ---
+echo "== optional Zed integration (isolated HOMEs, fake detection) =="
+zrun() { # zrun <home> <yes|no> [args...] ; non-interactive
+  local h="$1" det="$2"; shift 2
+  HOME="$h" KALI_ITERM2_ZED_INSTALLED="$det" bash "$ROOT/install.sh" "$@" \
+    </dev/null >/tmp/kali-t-zed.log 2>&1
+}
+zsettings() { printf '%s/Library/Application Support/Zed/settings.json' "$1"; }
+
+H=$(new_home z-none); zrun "$H" no dark
+[[ ! -e "$(zsettings "$H")" ]] \
+  && ok "Zed not installed: settings untouched" || bad "zed-not-installed"
+
+H=$(new_home z-skip-detected); zrun "$H" yes dark
+[[ ! -e "$(zsettings "$H")" ]] \
+  && ok "noninteractive install without --zed never touches Zed" \
+  || bad "noninteractive-zed-untouched"
+
+H=$(new_home z-light); zrun "$H" yes dark --zed light
+grep -qF '"KALI_ITERM2_THEME": "light"' "$(zsettings "$H")" 2>/dev/null \
+  && ok "--zed light writes override while iTerm2 theme is dark" \
+  || bad "zed-light-selection"
+
+H=$(new_home z-existing); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+cat > "$ZS" <<'EOF'
+{
+  // my editor theme
+  "theme": "One Dark",
+  "terminal": {
+    "font_size": 13,
+    "env": {
+      "MY_VAR": "keep",   // trailing comma below stays
+    },
+  }
+}
+EOF
+zrun "$H" yes dark --zed dark
+grep -q 'my editor theme' "$ZS" && grep -q 'MY_VAR' "$ZS" && grep -q font_size "$ZS" \
+  && grep -qF '"KALI_ITERM2_THEME": "dark"' "$ZS" \
+  && ok "existing terminal config + JSONC comments preserved on apply" \
+  || bad "zed-existing-config"
+
+H=$(new_home z-override); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{\n "terminal": {\n  "env": {\n   "KALI_ITERM2_THEME": "dark"\n  }\n }\n}\n' > "$ZS"
+zrun "$H" yes light --zed light
+grep -qF '"KALI_ITERM2_THEME": "dark"' "$ZS" && ! grep -q '"KALI_ITERM2_THEME": "light"' "$ZS" \
+  && rg -q 'kept|snippet' /tmp/kali-t-zed.log \
+  && ok "existing override never silently overwritten (noninteractive)" \
+  || bad "zed-existing-override"
+
+H=$(new_home z-malformed); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{ broken json ,, }\n' > "$ZS"
+zrun "$H" yes dark --zed dark; rc=$?
+[[ $rc == 0 && $(cat "$ZS") == '{ broken json ,, }' ]] \
+  && ok "malformed settings: untouched, install still succeeds with guidance" \
+  || bad "zed-malformed rc=$rc"
+
+H=$(new_home z-repeat); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{\n "a": 1\n}\n' > "$ZS"
+zrun "$H" yes dark --zed dark; cp "$ZS" "$BASE/zrep1"
+zrun "$H" yes dark --zed dark
+cmp -s "$ZS" "$BASE/zrep1" && [[ $(grep -c 'KALI_ITERM2_THEME' "$ZS") == 1 ]] \
+  && ok "repeated installation is idempotent (single key, identical file)" \
+  || bad "zed-repeat-install"
+
+# uninstall removes only our key; unrelated edits survive; backup kept.
+H=$(new_home z-uninstall); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{\n "theme": "X" // note\n}\n' > "$ZS"
+zrun "$H" yes dark --zed dark
+python3 - "$ZS" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+open(p, 'w').write(s.replace('"theme": "X"', '"theme": "X",\n  "post_install_key": 1'))
+PY
+HOME="$H" bash "$ROOT/uninstall.sh" </dev/null >/tmp/kali-t-zedun.log 2>&1
+! grep -q KALI_ITERM2_THEME "$ZS" && grep -q post_install_key "$ZS" \
+  && grep -q 'note' "$ZS" \
+  && ls "$H/Library/Application Support/Zed/" | rg -q '\.bak$' \
+  && ok "uninstall removes only our key; user edits + comments + backup intact" \
+  || bad "zed-uninstall-preservation"
+
+H=$(new_home z-uninstall-none); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{\n "theme": "X"\n}\n' > "$ZS"; cp "$ZS" "$BASE/znone"
+run_install "$H" light >/dev/null 2>&1 || true
+HOME="$H" bash "$ROOT/uninstall.sh" </dev/null >/dev/null 2>&1
+cmp -s "$ZS" "$BASE/znone" && ! ls "$H/Library/Application Support/Zed/" | rg -q 'kali-iterm2.*\.bak$' \
+  && ok "uninstall without prior Zed config: settings byte-identical, no backup churn" \
+  || bad "zed-uninstall-noop"
+
 # --------------------------------------------------------- interactive UI ---
 echo "== interactive installer (pty) =="
 if command -v expect >/dev/null 2>&1; then
@@ -224,7 +313,7 @@ if command -v expect >/dev/null 2>&1; then
   EXP="$BASE/pty.exp"
   cat > "$EXP" <<EOF
 set timeout 20
-spawn env HOME=$H bash $ROOT/install.sh
+spawn env HOME=$H KALI_ITERM2_ZED_INSTALLED=no bash $ROOT/install.sh
 expect {
   -re {Choice \[1-3\]:} { send "1\r"; exp_continue }
   -re {Install\? \[y/N\]:} { send "y\r"; exp_continue }
@@ -238,6 +327,51 @@ EOF
     ok "interactive menu (pty): pick 1 + confirm installs light"
   else
     bad "interactive pty run" "see /tmp/kali-t-pty.log"
+  fi
+
+  # Zed menu via pty: theme 2 (dark iTerm2), confirm, then Zed choice 2.
+  H=$(new_home pty-zed)
+  EXP="$BASE/pty-zed.exp"
+  cat > "$EXP" <<EOF
+set timeout 20
+spawn env HOME=$H KALI_ITERM2_ZED_INSTALLED=yes bash $ROOT/install.sh
+expect {
+  -re {Choice \[1-3\]:} { send "2\r"; exp_continue }
+  -re {Install\? \[y/N\]:} { send "y\r"; exp_continue }
+  -re {Zed terminal theme \[1-3\]:} { send "2\r"; exp_continue }
+  eof
+}
+catch wait result
+exit [lindex \$result 3]
+EOF
+  expect "$EXP" >/tmp/kali-t-pty-zed.log 2>&1
+  ZSET="$H/Library/Application Support/Zed/settings.json"
+  if [[ $? == 0 && -f "$ZSET" ]] && grep -qF '"KALI_ITERM2_THEME": "dark"' "$ZSET"; then
+    ok "interactive Zed menu (pty): choice 2 writes dark override"
+  else
+    bad "interactive Zed pty run" "see /tmp/kali-t-pty-zed.log"
+  fi
+
+  # Detected Zed but user picks Skip: no settings file is created.
+  H=$(new_home pty-zed-skip)
+  EXP="$BASE/pty-zed-skip.exp"
+  cat > "$EXP" <<EOF
+set timeout 20
+spawn env HOME=$H KALI_ITERM2_ZED_INSTALLED=yes bash $ROOT/install.sh
+expect {
+  -re {Choice \[1-3\]:} { send "1\r"; exp_continue }
+  -re {Install\? \[y/N\]:} { send "y\r"; exp_continue }
+  -re {Zed terminal theme \[1-3\]:} { send "3\r"; exp_continue }
+  eof
+}
+catch wait result
+exit [lindex \$result 3]
+EOF
+  expect "$EXP" >/tmp/kali-t-pty-zed-skip.log 2>&1
+  if [[ $? == 0 && ! -e "$H/Library/Application Support/Zed/settings.json" ]]; then
+    ok "interactive Zed menu (pty): Skip creates nothing"
+  else
+    bad "interactive Zed skip pty run" "see /tmp/kali-t-pty-zed-skip.log"
   fi
 elif command -v gtimeout >/dev/null 2>&1 && command -v script >/dev/null 2>&1; then
   skip "interactive pty run" "expect unavailable; BSD script(1) does not forward piped stdin"

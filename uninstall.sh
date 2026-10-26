@@ -48,6 +48,30 @@ if [[ -d "$HOME/.config/kali-iterm2" ]]; then
   CHANGED=1
 fi
 
+# Zed integration: remove only the KALI_ITERM2_THEME key we may have added.
+ZSET="$HOME/Library/Application Support/Zed/settings.json"
+if [[ -f "$ZSET" ]] && grep -qF '"KALI_ITERM2_THEME"' "$ZSET"; then
+  ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ ! -f "$ROOT/zed_settings.py" ]]; then
+    echo 'WARNING: zed_settings.py is missing; not touching Zed settings.json.' >&2
+    echo 'Remove the terminal.env.KALI_ITERM2_THEME key manually if desired.' >&2
+  else
+    BACKUP="$HOME/Library/Application Support/Zed/settings.json.kali-iterm2.uninstall.$(date +%Y%m%d-%H%M%S).bak"
+    n=1
+    while [[ -e "$BACKUP" ]]; do BACKUP="${BACKUP%.bak}-$n.bak"; n=$((n+1)); done
+    cp "$ZSET" "$BACKUP"
+    if ZOUT="$(python3 "$ROOT/zed_settings.py" remove "$ZSET" 2>&1)"; then
+      echo "Zed settings: $ZOUT (backup kept: $BACKUP)."
+      CHANGED=1
+    else
+      rm -f "$BACKUP"
+      echo "Zed settings: $ZOUT" >&2
+    fi
+  fi
+else
+  echo 'No Kali-iTerm2 key found in Zed settings; leaving Zed untouched.'
+fi
+
 echo
 if [[ "$CHANGED" -eq 1 ]]; then
   echo 'Backups are kept; delete them yourself once you are happy with the result.'

@@ -4,12 +4,29 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODE="${1:-}"
-
-if [[ $# -gt 1 || ( -n "$MODE" && "$MODE" != light && "$MODE" != dark ) ]]; then
-  echo 'Usage: ./install.sh [light|dark]' >&2
-  exit 2
-fi
+MODE=''
+ZED_MODE=''
+ZED_SEEN=''
+usage() { echo 'Usage: ./install.sh [light|dark] [--zed light|dark]' >&2; exit 2; }
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    light|dark)
+      if [[ -n "$MODE" ]]; then usage; fi
+      MODE="$1"
+      ;;
+    --zed)
+      if [[ -n "$ZED_SEEN" ]]; then usage; fi
+      ZED_SEEN=1
+      shift
+      case "${1:-}" in
+        light|dark) ZED_MODE="$1" ;;
+        *) usage ;;
+      esac
+      ;;
+    *) usage ;;
+  esac
+  shift
+done
 if [[ "$(uname -s)" != Darwin ]]; then
   echo 'This package supports macOS iTerm2 only.' >&2
   exit 1
@@ -30,7 +47,7 @@ if [[ ! -d /Applications/iTerm.app ]]; then
 fi
 for f in prompt/kali.zsh colors/ls-colors.zsh \
          themes/kali-light.itermcolors themes/kali-dark.itermcolors \
-         make_profiles.py; do
+         make_profiles.py zed_settings.py; do
   [[ -f "$ROOT/$f" ]] || {
     echo "Missing required file: $f (incomplete download?)" >&2
     exit 1
@@ -123,3 +140,79 @@ echo '    1. iTerm2 → Settings → Profiles → Kali Light or Kali Dark'
 echo '       → Other Actions → Set as Default Profile.'
 echo '    2. Open a new tab; the Kali-style prompt and file colors apply there.'
 echo "  To switch themes: rerun ./install.sh. To remove everything: ./uninstall.sh."
+
+zed_snippet() {
+  echo '  Add this to ~/Library/Application Support/Zed/settings.json yourself:'
+  echo "      \"terminal\": { \"env\": { \"KALI_ITERM2_THEME\": \"$1\" } }"
+}
+
+zed_detected() {
+  # KALI_ITERM2_ZED_INSTALLED=yes|no is an internal seam for automated tests.
+  case "${KALI_ITERM2_ZED_INSTALLED:-}" in
+    yes) return 0 ;;
+    no)  return 1 ;;
+  esac
+  if [[ -d "$HOME/Applications/Zed.app" || -d /Applications/Zed.app ]]; then
+    return 0
+  fi
+  command -v zed >/dev/null 2>&1
+}
+
+apply_zed() { # apply_zed <light|dark>
+  local zdir="$HOME/Library/Application Support/Zed"
+  local zset="$zdir/settings.json"
+  if ! zed_detected; then
+    echo 'Zed was not detected; skipping Zed integration.'
+    return 0
+  fi
+  mkdir -p "$zdir"
+  if [[ -f "$zset" ]] && grep -qF '"KALI_ITERM2_THEME"' "$zset"; then
+    local bak="$zdir/settings.json.kali-iterm2.$(date +%Y%m%d-%H%M%S).bak" n=1
+    while [[ -e "$bak" ]]; do bak="${bak%.bak}-$n.bak"; n=$((n+1)); done
+    cp "$zset" "$bak"
+  fi
+  local out rc
+  if out="$(python3 "$ROOT/zed_settings.py" apply "$zset" "$1" 2>&1)"; then rc=0; else rc=$?; fi
+  case "$rc" in
+    0) echo "Zed integrated terminal: $out ($1). Takes effect in new Zed terminals." ;;
+    4)
+      echo 'Zed already sets a different KALI_ITERM2_THEME (existing override kept).'
+      if [[ -t 0 ]]; then
+        printf 'Replace it with "%s"? [y/N] ' "$1"
+        local ans; read -r ans
+        if [[ "$ans" == y || "$ans" == Y ]]; then
+          if python3 "$ROOT/zed_settings.py" apply "$zset" "$1" --replace >/dev/null 2>&1; then
+            echo "Zed override replaced with \"$1\"."
+          else
+            echo 'Could not replace the override; nothing was written.' >&2
+            zed_snippet "$1"
+          fi
+        else
+          echo 'Kept the existing Zed override.'
+        fi
+      else
+        zed_snippet "$1"
+      fi
+      ;;
+    *) echo 'Could not edit Zed settings safely (nothing was written).' >&2
+       zed_snippet "$1" ;;
+  esac
+}
+
+if [[ -n "$ZED_MODE" ]]; then
+  apply_zed "$ZED_MODE"
+elif [[ -t 0 ]] && zed_detected; then
+  echo
+  echo 'Zed was detected. You can point its integrated terminal at a Kali'
+  echo 'theme too — this choice may differ from the iTerm2 theme above.'
+  echo '  1) Zed terminal: Kali Light'
+  echo '  2) Zed terminal: Kali Dark'
+  echo '  3) Skip (configure Zed manually)'
+  printf 'Zed terminal theme [1-3]: '
+  read -r ZCHOICE
+  case "$ZCHOICE" in
+    1) apply_zed light ;;
+    2) apply_zed dark ;;
+    *) echo 'Skipping Zed integration.' ;;
+  esac
+fi

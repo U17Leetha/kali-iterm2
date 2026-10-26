@@ -100,3 +100,39 @@ Items 1 (with the caveat below), 3 and 4 were confirmed by the user in real term
 **Testing:** suite extended to **37 checks, all passing**: bold-bold pinning per theme, three-tone light prompt assertion, dark prompt byte-unchanged assertion; previous contrast-floor and Zed palette pins still pass. Restoration/install safety untouched (isolated HOMEs only).
 
 **Gap:** rendered-pixel confirmation remains user-side (no image capability in this environment). Validation is one new Kali Light tab: `gls --color=always -la` in `/tmp/kali-iterm2-visual-test` — expect azure bold dirs, red archives, green executables, teal symlinks, aqua prompt frame.
+
+## 9. Addendum — optional Zed integration (installer convenience step)
+
+**Feature.** After the iTerm2 theme is installed, the interactive installer
+detects Zed (`~/Applications/Zed.app`, `/Applications/Zed.app`, or `zed` on
+PATH; `KALI_ITERM2_ZED_INSTALLED=yes|no` is an internal test seam) and offers
+an independent Light/Dark/Skip choice for its integrated terminal. Only
+`terminal.env.KALI_ITERM2_THEME` is ever written. Non-interactive installs do
+nothing unless `--zed light|dark` is passed. The Zed editor theme, OpenCode
+and every other setting are out of scope and untouched.
+
+**JSONC strategy.** New stdlib-only `zed_settings.py` (~200 lines, no new
+dependencies) performs *surgical* text edits: a length-preserving mask blanks
+comments and value strings (keys stay visible), the key/`terminal`/`env` path
+is located structurally, and exactly one insertion/replacement is spliced in.
+Every proposed result must re-parse as JSONC or nothing is written (exit 3 →
+installer prints the manual snippet instead of risking data loss). Existing
+overrides with a different value are never replaced silently: interactive
+asks for confirmation; non-interactive leaves them and shows the snippet.
+Files that do not parse at all are refused untouched.
+
+**Uninstall.** Removes only the `KALI_ITERM2_THEME` key when its value is
+`light|dark` (our own footprint), after a timestamped collision-safe backup,
+and only if the resulting file still parses — unrelated settings, comments
+and post-install user edits survive byte-identical. No key → no write, no
+backup churn. Empty `env`/`terminal` containers are deliberately left in
+place (valid JSON; removing them could delete user content).
+
+**Testing.** Suite extended from 37 to **48 checks, all passing**, covering
+every handoff-listed scenario: not installed, interactive skip (pty), light
+and dark selection, existing terminal config + JSONC comments, existing
+override protection, malformed settings untouched, repeated installation
+idempotency, uninstall preservation (user edits + comments + backup) and
+uninstall no-op. All Zed tests run in isolated temp HOMEs with fake detection;
+the developer's real `~/Library/Application Support/Zed/settings.json` was
+never modified by the test suite.
