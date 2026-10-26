@@ -24,6 +24,8 @@ from pathlib import Path
 import re, sys
 p = Path(sys.argv[1])
 s = p.read_text()
+# Markers are the install/uninstall contract: keep byte-identical to
+# install.sh (a test asserts they match).
 start = '# >>> kali-iterm2 managed >>>'
 end   = '# <<< kali-iterm2 managed <<<'
 s = re.sub(r'\n?' + re.escape(start) + r'.*?' + re.escape(end) + r'\n?', '\n', s, flags=re.S)
@@ -61,8 +63,14 @@ if [[ -f "$ZSET" ]] && grep -qF '"KALI_ITERM2_THEME"' "$ZSET"; then
     while [[ -e "$BACKUP" ]]; do BACKUP="${BACKUP%.bak}-$n.bak"; n=$((n+1)); done
     cp "$ZSET" "$BACKUP"
     if ZOUT="$(python3 "$ROOT/zed_settings.py" remove "$ZSET" 2>&1)"; then
-      echo "Zed settings: $ZOUT (backup kept: $BACKUP)."
-      CHANGED=1
+      if [[ "$ZOUT" == REMOVED ]]; then
+        echo "Removed the Kali-iTerm2 key from Zed settings (backup kept: $BACKUP)."
+        CHANGED=1
+      else
+        # Nothing was written (foreign value or stray key): no backup churn.
+        rm -f "$BACKUP"
+        echo "Zed settings: $ZOUT"
+      fi
     else
       rm -f "$BACKUP"
       echo "Zed settings: $ZOUT" >&2

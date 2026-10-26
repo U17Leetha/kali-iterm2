@@ -136,3 +136,27 @@ idempotency, uninstall preservation (user edits + comments + backup) and
 uninstall no-op. All Zed tests run in isolated temp HOMEs with fake detection;
 the developer's real `~/Library/Application Support/Zed/settings.json` was
 never modified by the test suite.
+
+## 10. Addendum — production code review round (pre-release)
+
+A multi-role production review (correctness, security, architecture,
+efficiency, density, dependencies, testing, hygiene) was performed on the
+whole repository at `c861f64`. Verdict: request changes; no Critical findings;
+one High. All actionable findings were fixed and are covered by regression
+tests (suite extended 48 → **54 checks, all passing**):
+
+| Finding | Severity | Fix |
+| --- | --- | --- |
+| Pre-existing keyless `settings.json` modified without backup (docs promised otherwise) | High | Installer backs the file up whenever it exists and will be modified; unused backups are removed (no churn) |
+| Unhandled `IndexError` on unterminated `/*` comment in Zed settings via uninstall path | Medium | Comment masking is bounds-safe; operation fails soft, file untouched |
+| Test suite depended on `rg` (not shipped with macOS) and fixed `/tmp` log names | Medium | Portable `grep -E`; all logs inside the per-run temp dir |
+| Key lookup was global-first-match — a stray `KALI_ITERM2_THEME` outside `terminal.env` could be misread as ours or duplicated | Low | Lookup scoped to the `terminal.env` object span; stray keys are refused (install) / left alone (uninstall) |
+| Uninstall reported success/kept backups even when it wrote nothing (foreign value) | Low | Backup kept and change reported only on actual removal |
+| Non-atomic writes, bare `open()` calls, swallowed helper output on failure | Low | Atomic write (temp + rename), explicit read-error handling, failures print the helper's message |
+| Unguarded `read` under `set -e` in interactive Zed prompts | Low | Reads default safely on EOF |
+| Managed-block markers duplicated across scripts with drift risk | Low | Comments name the contract; a suite tripwire asserts install/uninstall markers stay byte-identical |
+
+Not changed (deliberate): `DEV_REPORT.md` itself stays at repo root as a
+handoff artifact for this project's governance; `zed_settings.py` remains a
+top-level script (single purpose, no package justified); review noted the
+codebase is appropriately small — no abstraction changes recommended.

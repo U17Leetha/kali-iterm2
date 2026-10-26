@@ -20,10 +20,10 @@ new_home() { # new_home <name> -> echoes path
 }
 
 run_install() { # run_install <home> [mode] ; non-interactive (no tty)
-  HOME="$1" bash "$ROOT/install.sh" ${2:+"$2"} </dev/null >/tmp/kali-t-install.log 2>&1
+  HOME="$1" bash "$ROOT/install.sh" ${2:+"$2"} </dev/null >"$BASE/kali-t-install.log" 2>&1
 }
 run_uninstall() { # run_uninstall <home>
-  HOME="$1" bash "$ROOT/uninstall.sh" </dev/null >/tmp/kali-t-uninstall.log 2>&1
+  HOME="$1" bash "$ROOT/uninstall.sh" </dev/null >"$BASE/kali-t-uninstall.log" 2>&1
 }
 block_count() { local c; c=$(grep -c 'kali-iterm2 managed >>>' "$1/.zshrc" 2>/dev/null) || true; echo "${c:-0}"; }
 
@@ -61,6 +61,15 @@ def hx(c): return '#%02X%02X%02X' % tuple(round(c[k]*255) for k in ('Red Compone
 assert hx(dark['Ansi 12 Color']) == '#8BC8FF', 'dark palette changed unexpectedly'
 PYEOF
 
+# Install/uninstall pairing: the managed-block markers are a contract.
+IM=$(grep -m1 -o '# >>> kali-iterm2 managed >>>' "$ROOT/install.sh")
+UM=$(grep -m1 -o '# >>> kali-iterm2 managed >>>' "$ROOT/uninstall.sh")
+if [[ "$IM" == '# >>> kali-iterm2 managed >>>' && "$IM" == "$UM" ]]; then
+  ok "managed-block markers identical in install.sh and uninstall.sh"
+else
+  bad "marker drift between install.sh ('$IM') and uninstall.sh ('$UM')"
+fi
+
 # ------------------------------------------------------- profile generation --
 echo "== iTerm2 profile generation =="
 PJ="$BASE/profiles.json"
@@ -79,7 +88,7 @@ H=$(new_home s1); run_install "$H" light
 if [[ $? -eq 0 && $(block_count "$H") == 1 && -f "$H/.config/kali-iterm2/prompt/kali.zsh" \
    && -f "$H/Library/Application Support/iTerm2/DynamicProfiles/kali-iterm2.json" ]]; then
   ok "clean install (light) creates one block and all files"
-else bad "clean install light" "$(tail -3 /tmp/kali-t-install.log)"; fi
+else bad "clean install light" "$(tail -3 "$BASE/kali-t-install.log")"; fi
 
 # 2. Clean install, dark
 H=$(new_home s2); run_install "$H" dark
@@ -120,7 +129,7 @@ if [[ $(block_count "$H") == 0 ]] && grep -q 'starship init zsh' "$H/.zshrc" \
    && grep -q 'CANARY=keep-me' "$H/.zshrc" && [[ ! -e "$H/.config/kali-iterm2" ]] \
    && [[ ! -e "$H/Library/Application Support/iTerm2/DynamicProfiles/kali-iterm2.json" ]]; then
   ok "uninstall removes managed files/block, keeps user content incl. post-install edits"
-else bad "uninstall scenario" "$(cat /tmp/kali-t-uninstall.log)"; fi
+else bad "uninstall scenario" "$(cat "$BASE/kali-t-uninstall.log")"; fi
 ls "$H"/.zshrc.kali-iterm2.uninstall.*.bak >/dev/null 2>&1 \
   && ok "uninstall kept a .zshrc backup" || bad "no uninstall backup"
 run_uninstall "$H" && grep -q 'starship init zsh' "$H/.zshrc" \
@@ -130,7 +139,7 @@ run_uninstall "$H" && grep -q 'starship init zsh' "$H/.zshrc" \
 H=$(new_home "home with spaces and (parens)")
 run_install "$H" light
 grep -q 'kali-iterm2 managed >>>' "$H/.zshrc" 2>/dev/null \
-  && ok "install works under HOME containing spaces/parens" || bad "spaces in HOME" "$(tail -3 /tmp/kali-t-install.log)"
+  && ok "install works under HOME containing spaces/parens" || bad "spaces in HOME" "$(tail -3 "$BASE/kali-t-install.log")"
 
 # 10. Missing GNU coreutils: BSD fallback alias, no error
 if env PATH=/usr/bin:/bin zsh -f -c 'command -v gls >/dev/null 2>&1'; then
@@ -222,7 +231,7 @@ echo "== optional Zed integration (isolated HOMEs, fake detection) =="
 zrun() { # zrun <home> <yes|no> [args...] ; non-interactive
   local h="$1" det="$2"; shift 2
   HOME="$h" KALI_ITERM2_ZED_INSTALLED="$det" bash "$ROOT/install.sh" "$@" \
-    </dev/null >/tmp/kali-t-zed.log 2>&1
+    </dev/null >"$BASE/kali-t-zed.log" 2>&1
 }
 zsettings() { printf '%s/Library/Application Support/Zed/settings.json' "$1"; }
 
@@ -258,14 +267,26 @@ grep -q 'my editor theme' "$ZS" && grep -q 'MY_VAR' "$ZS" && grep -q font_size "
   && grep -qF '"KALI_ITERM2_THEME": "dark"' "$ZS" \
   && ok "existing terminal config + JSONC comments preserved on apply" \
   || bad "zed-existing-config"
+# The documented guarantee: any pre-existing settings.json is backed up first.
+ls "$H/Library/Application Support/Zed/" | grep -qE 'settings\.json\.kali-iterm2.*\.bak$' \
+  && ok "pre-existing settings.json backed up before modification" \
+  || bad "zed-backup-before-modify"
 
 H=$(new_home z-override); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
 printf '{\n "terminal": {\n  "env": {\n   "KALI_ITERM2_THEME": "dark"\n  }\n }\n}\n' > "$ZS"
 zrun "$H" yes light --zed light
 grep -qF '"KALI_ITERM2_THEME": "dark"' "$ZS" && ! grep -q '"KALI_ITERM2_THEME": "light"' "$ZS" \
-  && rg -q 'kept|snippet' /tmp/kali-t-zed.log \
+  && grep -Eq 'kept|snippet' "$BASE/kali-t-zed.log" \
   && ok "existing override never silently overwritten (noninteractive)" \
   || bad "zed-existing-override"
+# Explicit --replace: the interactive installer's confirmed-replace path.
+ROUT=$(python3 "$ROOT/zed_settings.py" apply "$ZS" light --replace 2>&1) \
+  && [[ "$ROUT" == REPLACED ]] \
+  && grep -qF '"KALI_ITERM2_THEME": "light"' "$ZS" \
+  && [[ $(grep -c KALI_ITERM2_THEME "$ZS") == 1 ]] \
+  && [[ "$(python3 "$ROOT/zed_settings.py" apply "$ZS" light 2>&1)" == NOOP ]] \
+  && ok "--replace swaps the override, single key, still valid JSON" \
+  || bad "zed-replace-flag out=$ROUT"
 
 H=$(new_home z-malformed); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
 printf '{ broken json ,, }\n' > "$ZS"
@@ -273,6 +294,24 @@ zrun "$H" yes dark --zed dark; rc=$?
 [[ $rc == 0 && $(cat "$ZS") == '{ broken json ,, }' ]] \
   && ok "malformed settings: untouched, install still succeeds with guidance" \
   || bad "zed-malformed rc=$rc"
+
+# A key outside terminal.env is neither ours to edit nor duplicate.
+H=$(new_home z-stray); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{\n "tasks": {\n  "env": {\n   "KALI_ITERM2_THEME": "dark"\n  }\n }\n}\n' > "$ZS"
+cp "$ZS" "$BASE/zstray0"
+OUT=$(python3 "$ROOT/zed_settings.py" apply "$ZS" dark 2>&1); rc=$?
+[[ $rc == 3 && "$OUT" == *outside* ]] && cmp -s "$ZS" "$BASE/zstray0" \
+  && ok "key outside terminal.env: refused, file untouched, never duplicated" \
+  || bad "zed-stray-key rc=$rc out=$OUT"
+
+# Unterminated block comment must not crash the removal path.
+H=$(new_home z-dangling); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{\n "terminal": {\n  "env": {\n   "KALI_ITERM2_THEME": "dark"\n  }\n }\n} /* dangling\n' > "$ZS"
+cp "$ZS" "$BASE/zdang0"
+OUT=$(python3 "$ROOT/zed_settings.py" remove "$ZS" 2>&1); rc=$?
+[[ $rc == 3 && "${OUT}" != *Traceback* ]] && cmp -s "$ZS" "$BASE/zdang0" \
+  && ok "unterminated block comment: fails soft, no crash, file untouched" \
+  || bad "zed-dangling-comment rc=$rc out=$OUT"
 
 H=$(new_home z-repeat); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
 printf '{\n "a": 1\n}\n' > "$ZS"
@@ -291,10 +330,10 @@ import sys
 p = sys.argv[1]; s = open(p).read()
 open(p, 'w').write(s.replace('"theme": "X"', '"theme": "X",\n  "post_install_key": 1'))
 PY
-HOME="$H" bash "$ROOT/uninstall.sh" </dev/null >/tmp/kali-t-zedun.log 2>&1
+HOME="$H" bash "$ROOT/uninstall.sh" </dev/null >"$BASE/kali-t-zedun.log" 2>&1
 ! grep -q KALI_ITERM2_THEME "$ZS" && grep -q post_install_key "$ZS" \
   && grep -q 'note' "$ZS" \
-  && ls "$H/Library/Application Support/Zed/" | rg -q '\.bak$' \
+  && ls "$H/Library/Application Support/Zed/" | grep -qE '\.bak$' \
   && ok "uninstall removes only our key; user edits + comments + backup intact" \
   || bad "zed-uninstall-preservation"
 
@@ -302,9 +341,20 @@ H=$(new_home z-uninstall-none); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS
 printf '{\n "theme": "X"\n}\n' > "$ZS"; cp "$ZS" "$BASE/znone"
 run_install "$H" light >/dev/null 2>&1 || true
 HOME="$H" bash "$ROOT/uninstall.sh" </dev/null >/dev/null 2>&1
-cmp -s "$ZS" "$BASE/znone" && ! ls "$H/Library/Application Support/Zed/" | rg -q 'kali-iterm2.*\.bak$' \
+cmp -s "$ZS" "$BASE/znone" && ! ls "$H/Library/Application Support/Zed/" | grep -qE 'kali-iterm2.*\.bak$' \
   && ok "uninstall without prior Zed config: settings byte-identical, no backup churn" \
   || bad "zed-uninstall-noop"
+
+# Foreign value: uninstall must report honestly and leave zero artifacts.
+H=$(new_home z-uninstall-foreign); ZS="$(zsettings "$H")"; mkdir -p "$(dirname "$ZS")"
+printf '{\n "terminal": {\n  "env": {\n   "KALI_ITERM2_THEME": "solarized"\n  }\n }\n}\n' > "$ZS"
+cp "$ZS" "$BASE/zforeign"
+HOME="$H" bash "$ROOT/uninstall.sh" </dev/null >"$BASE/kali-t-zedunf.log" 2>&1
+cmp -s "$ZS" "$BASE/zforeign" \
+  && ! ls "$H/Library/Application Support/Zed/" | grep -qE '\.bak$' \
+  && grep -q 'not a Kali-iTerm2 setting' "$BASE/kali-t-zedunf.log" \
+  && ok "uninstall with foreign value: untouched, no backup churn, honest report" \
+  || bad "zed-uninstall-foreign"
 
 # --------------------------------------------------------- interactive UI ---
 echo "== interactive installer (pty) =="
@@ -322,11 +372,11 @@ expect {
 catch wait result
 exit [lindex \$result 3]
 EOF
-  expect "$EXP" >/tmp/kali-t-pty.log 2>&1
+  expect "$EXP" >"$BASE/kali-t-pty.log" 2>&1
   if [[ $? == 0 && $(block_count "$H") == 1 ]] && grep -qF 'KALI_ITERM2_THEME="${KALI_ITERM2_THEME:-light}"' "$H/.zshrc"; then
     ok "interactive menu (pty): pick 1 + confirm installs light"
   else
-    bad "interactive pty run" "see /tmp/kali-t-pty.log"
+    bad "interactive pty run" "see "$BASE/kali-t-pty.log""
   fi
 
   # Zed menu via pty: theme 2 (dark iTerm2), confirm, then Zed choice 2.
@@ -344,12 +394,12 @@ expect {
 catch wait result
 exit [lindex \$result 3]
 EOF
-  expect "$EXP" >/tmp/kali-t-pty-zed.log 2>&1
+  expect "$EXP" >"$BASE/kali-t-pty-zed.log" 2>&1
   ZSET="$H/Library/Application Support/Zed/settings.json"
   if [[ $? == 0 && -f "$ZSET" ]] && grep -qF '"KALI_ITERM2_THEME": "dark"' "$ZSET"; then
     ok "interactive Zed menu (pty): choice 2 writes dark override"
   else
-    bad "interactive Zed pty run" "see /tmp/kali-t-pty-zed.log"
+    bad "interactive Zed pty run" "see "$BASE/kali-t-pty-zed.log""
   fi
 
   # Detected Zed but user picks Skip: no settings file is created.
@@ -367,11 +417,11 @@ expect {
 catch wait result
 exit [lindex \$result 3]
 EOF
-  expect "$EXP" >/tmp/kali-t-pty-zed-skip.log 2>&1
+  expect "$EXP" >"$BASE/kali-t-pty-zed-skip.log" 2>&1
   if [[ $? == 0 && ! -e "$H/Library/Application Support/Zed/settings.json" ]]; then
     ok "interactive Zed menu (pty): Skip creates nothing"
   else
-    bad "interactive Zed skip pty run" "see /tmp/kali-t-pty-zed-skip.log"
+    bad "interactive Zed skip pty run" "see "$BASE/kali-t-pty-zed-skip.log""
   fi
 elif command -v gtimeout >/dev/null 2>&1 && command -v script >/dev/null 2>&1; then
   skip "interactive pty run" "expect unavailable; BSD script(1) does not forward piped stdin"

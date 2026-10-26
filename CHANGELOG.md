@@ -20,7 +20,11 @@ All notable changes to Kali-iTerm2 are documented here. The format follows
 - Eleven tests for the Zed integration: undetected-skip, interactive skip,
   light/dark selection, existing terminal config with JSONC comments, existing
   override protection, malformed-file safety, idempotent reinstallation,
-  uninstall preservation and no-op behavior (suite: 48 checks).
+  uninstall preservation and no-op behavior.
+- Six tests from the production code review round: `--replace` flow, backup on
+  modify of a pre-existing keyless file, key scoped to `terminal.env` (stray
+  key refused), unterminated-comment crash regression, foreign-value uninstall
+  honesty, and an install/uninstall marker tripwire (suite: 54 checks).
 - Per-terminal theme selection: a session can set `KALI_ITERM2_THEME=light|dark`
   in its environment (e.g. Zed's `terminal.env`) to override the installed
   default for that terminal only; documented in the README with a Zed example.
@@ -53,6 +57,24 @@ All notable changes to Kali-iTerm2 are documented here. The format follows
 
 ### Fixed
 
+- **Zed settings backup guarantee now holds.** A pre-existing
+  `settings.json` *without* the Kali-iTerm2 key was previously modified with no
+  backup, despite documentation promising otherwise. The installer now backs
+  the file up whenever it exists and modifies it (a backup is removed again if
+  nothing changed), writes are atomic (temp file + rename), and read errors
+  fail with a clear message instead of a traceback.
+- **Crash on malformed Zed settings.** An unterminated `/*` comment in
+  `settings.json` made the uninstall key-removal path raise an unhandled
+  `IndexError`; masking now handles it and the operation fails soft, leaving
+  the file untouched.
+- **Key handling is scoped to `terminal.env`.** A `KALI_ITERM2_THEME` key
+  elsewhere in `settings.json` is no longer mistaken for ours: install refuses
+  (and never duplicates), uninstall leaves it untouched.
+- **Honest uninstall reporting.** Uninstall now keeps the Zed backup and
+  reports a change only when it actually removed our key; foreign values and
+  no-op runs leave no stray backup file.
+- Test suite no longer depends on `rg` (portable `grep -E`), and its log files
+  live inside the per-run temporary directory instead of fixed `/tmp` paths.
 - **Kali Light directories rendered pale lavender in iTerm2.** iTerm2 renders
   bold text with the *bright* palette entry ("Use Bright Bold", on by default),
   so `di=01;34` displayed bright blue (ANSI 12, `#0080FF`, contrast 3.6:1 on

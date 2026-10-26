@@ -13,10 +13,63 @@ Exit codes: apply  0 = applied/created/no-op, 3 = manual snippet needed,
 Standard library only — no JSON dependency is introduced for this feature.
 """
 import json
+import os
 import re
 import sys
+import tempfile
 
 KEY = 'KALI_ITERM2_THEME'
+
+
+def read_text(path):
+    with open(path, encoding='utf-8') as f:
+        return f.read()
+
+
+def write_atomic(path, content):
+    """Replace `path` atomically (same-directory temp file + rename).
+
+    Zed watches settings.json and reloads it; a partial write would be read
+    as corrupt config. Returns False if the write could not be completed.
+    """
+    try:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or '.',
+                                   prefix='.kali-iterm2-', suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(content)
+            os.replace(tmp, path)
+        except OSError:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            return False
+    except OSError:
+        return False
+    return True
+
+
+def resolve_terminal_env(masked):
+    """Return (terminal_open, env_open, env_close) mask indices; missing are -1.
+
+    Raises ValueError('<key> is not an object') when a level exists but is
+    not an object — the caller reports it and writes nothing."""
+    topen = eopen = eclose = -1
+    root = masked.find('{')
+    if root < 0:
+        return -1, -1, -1
+    tkey = find_key(masked, 'terminal', root + 1, match_brace(masked, root))
+    if tkey >= 0:
+        topen, _tc = object_value(masked, tkey)
+        if topen < 0:
+            raise ValueError('"terminal" is not an object')
+        ekey = find_key(masked, 'env', topen + 1, match_brace(masked, topen))
+        if ekey >= 0:
+            eopen, eclose = object_value(masked, ekey)
+            if eopen < 0:
+                raise ValueError('"env" is not an object')
+    return topen, eopen, eclose
 
 
 def mask(text):
@@ -55,12 +108,13 @@ def mask(text):
             i = j
         elif c == '/' and i + 1 < n and text[i + 1] == '*':
             j = i
-            while j < n - 1 and not (text[j] == '*' and text[j + 1] == '/'):
+            while j + 1 < n and not (text[j] == '*' and text[j + 1] == '/'):
                 if text[j] != '\n':
                     out[j] = ' '
                 j += 1
-            out[j] = out[j + 1] = ' '
-            i = j + 2
+            if j + 1 < n:              # unterminated block comment: blank to EOF
+                out[j] = out[j + 1] = ' '
+            i = min(j + 2, n)
         else:
             i += 1
     return ''.join(out)
@@ -132,14 +186,21 @@ def line_indent_at(text, idx):
 
 def do_apply():
     try:
-        text = open(PATH, encoding='utf-8').read()
+        text = read_text(PATH)
     except FileNotFoundError:
         text = ''
+    except OSError as exc:
+        print('ERROR: cannot read settings.json (%s).' % exc.strerror, file=sys.stderr)
+        return 3
     if not text.strip():
         new = ('{\n  "terminal": {\n    "env": {\n      "%s": "%s"\n    }\n  }\n}\n'
                % (KEY, MODE))
-        assert parses(new)
-        open(PATH, 'w', encoding='utf-8').write(new)
+        if not parses(new):   # constant template; guards future edits to it
+            print('INTERNAL: built-in template failed validation.', file=sys.stderr)
+            return 3
+        if not write_atomic(PATH, new):
+            print('ERROR: could not write settings.json.', file=sys.stderr)
+            return 3
         print('CREATED')
         return 0
 
@@ -149,7 +210,23 @@ def do_apply():
         return 3
 
     masked = mask(text)
-    kidx = find_key(masked, KEY)
+    root = masked.find('{')
+    if root < 0:
+        print('MALFORMED: no JSON object found; nothing written.', file=sys.stderr)
+        return 3
+    try:
+        topen, eopen, eclose = resolve_terminal_env(masked)
+    except ValueError as exc:
+        print('MALFORMED: %s; nothing written.' % exc, file=sys.stderr)
+        return 3
+    # The key is ours only inside terminal.env; a stray occurrence elsewhere
+    # is reported, never edited, and never duplicated alongside.
+    kidx = find_key(masked, KEY, eopen + 1, eclose) if eopen >= 0 else -1
+    if kidx < 0 and find_key(masked, KEY) >= 0:
+        print('CONFLICT: "%s" exists outside terminal.env; review manually.' % KEY,
+              file=sys.stderr)
+        return 3
+    key_entry = '"%s": "%s"' % (KEY, MODE)
     if kidx >= 0:
         m = re.compile(r'"%s"\s*:\s*"([^"]*)"' % KEY).match(text, kidx)
         cur = m.group(1) if m else None
@@ -169,55 +246,52 @@ def do_apply():
         if not parses(new):
             print('INTERNAL: proposed edit failed validation.', file=sys.stderr)
             return 3
-        open(PATH, 'w', encoding='utf-8').write(new)
+        if not write_atomic(PATH, new):
+            print('ERROR: could not write settings.json.', file=sys.stderr)
+            return 3
         print('REPLACED')
         return 0
 
-    root = masked.find('{')
-    if root < 0:
-        return 3
-    tkey = find_key(masked, 'terminal', root + 1, match_brace(masked, root))
-    key_entry = '"%s": "%s"' % (KEY, MODE)
-    if tkey < 0:
+    if topen < 0:
         new = insert_first_key(text, masked, root, '',
                                '"terminal": {"env": {%s}}' % key_entry)
+    elif eopen < 0:
+        new = insert_first_key(text, masked, topen, line_indent_at(text, topen),
+                               '"env": {%s}' % key_entry)
     else:
-        to, _tc = object_value(masked, tkey)
-        if to < 0:
-            print('MALFORMED: "terminal" is not an object; nothing written.',
-                  file=sys.stderr)
-            return 3
-        ekey = find_key(masked, 'env', to + 1, match_brace(masked, to))
-        if ekey < 0:
-            new = insert_first_key(text, masked, to, line_indent_at(text, to),
-                                   '"env": {%s}' % key_entry)
-        else:
-            eo, _ec = object_value(masked, ekey)
-            if eo < 0:
-                print('MALFORMED: "env" is not an object; nothing written.',
-                      file=sys.stderr)
-                return 3
-            new = insert_first_key(text, masked, eo, line_indent_at(text, eo),
-                                   key_entry)
+        new = insert_first_key(text, masked, eopen, line_indent_at(text, eopen),
+                               key_entry)
     if not parses(new):
         print('INTERNAL: proposed edit failed validation; nothing written.',
               file=sys.stderr)
         return 3
-    open(PATH, 'w', encoding='utf-8').write(new)
+    if not write_atomic(PATH, new):
+        print('ERROR: could not write settings.json.', file=sys.stderr)
+        return 3
     print('APPLIED')
     return 0
 
 
 def do_remove():
     try:
-        text = open(PATH, encoding='utf-8').read()
+        text = read_text(PATH)
     except FileNotFoundError:
         print('NOKEY')
         return 0
-    masked = mask(text)
-    kidx = find_key(masked, KEY)
+    except OSError as exc:
+        print('ERROR: cannot read settings.json (%s).' % exc.strerror, file=sys.stderr)
+        return 3
+    masked = mask(text)   # safe on malformed input (see mask docstring)
+    try:
+        _topen, eopen, eclose = resolve_terminal_env(masked)
+    except ValueError:
+        eopen = -1        # unusable structure; global check below reports the key
+    kidx = find_key(masked, KEY, eopen + 1, eclose) if eopen >= 0 else -1
     if kidx < 0:
-        print('NOKEY')
+        if find_key(masked, KEY) >= 0:
+            print('Key exists outside terminal.env; leaving it untouched.')
+        else:
+            print('NOKEY')
         return 0
     m = re.compile(r'"%s"\s*:\s*"(?:light|dark)"' % KEY).match(text, kidx)
     if not m:
@@ -246,7 +320,9 @@ def do_remove():
         print('Could not remove the key safely; review settings.json manually.',
               file=sys.stderr)
         return 3
-    open(PATH, 'w', encoding='utf-8').write(new)
+    if not write_atomic(PATH, new):
+        print('ERROR: could not write settings.json.', file=sys.stderr)
+        return 3
     print('REMOVED')
     return 0
 

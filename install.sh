@@ -121,6 +121,8 @@ from pathlib import Path
 import re, sys
 p = Path(sys.argv[1]); mode = sys.argv[2]
 s = p.read_text()
+# Markers are the install/uninstall contract: keep byte-identical to
+# uninstall.sh (a test asserts they match).
 start = '# >>> kali-iterm2 managed >>>'
 end   = '# <<< kali-iterm2 managed <<<'
 s = re.sub(r'\n?' + re.escape(start) + r'.*?' + re.escape(end) + r'\n?', '\n', s, flags=re.S)
@@ -166,23 +168,29 @@ apply_zed() { # apply_zed <light|dark>
     return 0
   fi
   mkdir -p "$zdir"
-  if [[ -f "$zset" ]] && grep -qF '"KALI_ITERM2_THEME"' "$zset"; then
-    local bak="$zdir/settings.json.kali-iterm2.$(date +%Y%m%d-%H%M%S).bak" n=1
+  # Back up before ANY modification (documented guarantee). The backup is
+  # deleted again when it turns out nothing needed to be written.
+  local bak=''
+  if [[ -f "$zset" ]]; then
+    bak="$zdir/settings.json.kali-iterm2.$(date +%Y%m%d-%H%M%S).bak"
+    local n=1
     while [[ -e "$bak" ]]; do bak="${bak%.bak}-$n.bak"; n=$((n+1)); done
     cp "$zset" "$bak"
   fi
-  local out rc
+  local out rc changed=0
   if out="$(python3 "$ROOT/zed_settings.py" apply "$zset" "$1" 2>&1)"; then rc=0; else rc=$?; fi
   case "$rc" in
-    0) echo "Zed integrated terminal: $out ($1). Takes effect in new Zed terminals." ;;
+    0) echo "Zed integrated terminal: $out ($1). Takes effect in new Zed terminals."
+       if [[ "$out" != NOOP ]]; then changed=1; fi ;;
     4)
       echo 'Zed already sets a different KALI_ITERM2_THEME (existing override kept).'
       if [[ -t 0 ]]; then
         printf 'Replace it with "%s"? [y/N] ' "$1"
-        local ans; read -r ans
+        local ans; read -r ans || ans=''
         if [[ "$ans" == y || "$ans" == Y ]]; then
           if python3 "$ROOT/zed_settings.py" apply "$zset" "$1" --replace >/dev/null 2>&1; then
             echo "Zed override replaced with \"$1\"."
+            changed=1
           else
             echo 'Could not replace the override; nothing was written.' >&2
             zed_snippet "$1"
@@ -195,8 +203,10 @@ apply_zed() { # apply_zed <light|dark>
       fi
       ;;
     *) echo 'Could not edit Zed settings safely (nothing was written).' >&2
+       if [[ -n "$out" ]]; then printf '%s\n' "$out" >&2; fi
        zed_snippet "$1" ;;
   esac
+  if [[ -n "$bak" && "$changed" == 0 ]]; then rm -f "$bak"; fi
 }
 
 if [[ -n "$ZED_MODE" ]]; then
@@ -209,7 +219,8 @@ elif [[ -t 0 ]] && zed_detected; then
   echo '  2) Zed terminal: Kali Dark'
   echo '  3) Skip (configure Zed manually)'
   printf 'Zed terminal theme [1-3]: '
-  read -r ZCHOICE
+  ZCHOICE=''
+  read -r ZCHOICE || true
   case "$ZCHOICE" in
     1) apply_zed light ;;
     2) apply_zed dark ;;
